@@ -1,0 +1,579 @@
+-- Player
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid")
+
+-- Get RemoteEvents/Functions
+local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
+local RemoteFunctions = ReplicatedStorage:WaitForChild("RemoteFunctions")
+
+-- Settings
+local Settings = {
+    InstantTake = false,
+    CollectCash = false,
+    AutoUpgradeSpeed = false,
+    AutoUpgradeCarry = false,
+    AutoUpgradeBrainrot = false,
+    AutoRebirth = false,
+    ZoomUnlocked = false,
+    TweenSpeed = 1 -- Speed of tween (seconds)
+}
+
+-- Gap System - CORRECT Recorded Positions
+local GapPositions = {
+    Vector3.new(204, -3, 21),           -- Gap 1: Starting Area
+    Vector3.new(289, -3, 24),           -- Gap 2: Uncommon Area
+    Vector3.new(398, -3, 30),           -- Gap 3: Rare Area
+    Vector3.new(548, -3, 29),           -- Gap 4: Epic Area
+    Vector3.new(756, -3, 26),           -- Gap 5: Legendary Area
+    Vector3.new(1084, -3, 26),          -- Gap 6: Mythical Area
+    Vector3.new(1574, -3, 20),          -- Gap 7: Cosmic Area
+    Vector3.new(2271, -3, 1),           -- Gap 8: Secret Area
+    Vector3.new(2609, -3, -17)          -- Gap 9: Celestial Area
+}
+
+local GapNames = {
+    "Starting Area",
+    "Uncommon Area",
+    "Rare Area",
+    "Epic Area",
+    "Legendary Area",
+    "Mythical Area",
+    "Cosmic Area",
+    "Secret Area",
+    "Celestial Area"
+}
+
+local CurrentGapIndex = 1
+local IsTweening = false
+
+-- ============================================================
+-- UTILITY FUNCTIONS
+-- ============================================================
+
+local function Notify(title, message)
+    Rayfield:Notify({
+        Title = title,
+        Content = message,
+        Duration = 3,
+        Image = 4483362458
+    })
+end
+
+local function GetCharacter()
+    Character = Player.Character or Player.CharacterAdded:Wait()
+    HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+    Humanoid = Character:WaitForChild("Humanoid")
+    return Character
+end
+
+-- ============================================================
+-- TWEEN FUNCTION
+-- ============================================================
+
+local function TweenToPosition(targetPosition)
+    if IsTweening then
+        Notify("⏳ Wait", "Already moving!")
+        return false
+    end
+    
+    if not HumanoidRootPart then GetCharacter() end
+    
+    IsTweening = true
+    
+    -- Calculate distance for tween duration
+    local distance = (HumanoidRootPart.Position - targetPosition).Magnitude
+    local tweenDuration = (distance / 500) * Settings.TweenSpeed -- Adjust speed based on distance
+    
+    -- Create tween info
+    local tweenInfo = TweenInfo.new(
+        tweenDuration,
+        Enum.EasingStyle.Linear,
+        Enum.EasingDirection.InOut,
+        0,
+        false,
+        0
+    )
+    
+    -- Create the tween
+    local tween = TweenService:Create(
+        HumanoidRootPart,
+        tweenInfo,
+        {CFrame = CFrame.new(targetPosition)}
+    )
+    
+    -- Play tween
+    tween:Play()
+    
+    -- Wait for tween to complete
+    tween.Completed:Wait()
+    
+    IsTweening = false
+    return true
+end
+
+-- ============================================================
+-- GAP NAVIGATION (Tween-Based with Recorded Positions)
+-- ============================================================
+
+local function GapUp()
+    if CurrentGapIndex >= #GapPositions then
+        Notify("⚠️ Max Gap", "Already at highest gap!")
+        return
+    end
+    
+    CurrentGapIndex = CurrentGapIndex + 1
+    local targetPos = GapPositions[CurrentGapIndex]
+    local areaName = GapNames[CurrentGapIndex]
+    
+    Notify("⬆️ Gap Up", "Moving to " .. areaName .. "...")
+    
+    if TweenToPosition(targetPos) then
+        Notify("✅ " .. areaName, "Arrived!")
+    end
+end
+
+local function GapDown()
+    if CurrentGapIndex <= 1 then
+        Notify("⚠️ Min Gap", "Already at lowest gap!")
+        return
+    end
+    
+    CurrentGapIndex = CurrentGapIndex - 1
+    local targetPos = GapPositions[CurrentGapIndex]
+    local areaName = GapNames[CurrentGapIndex]
+    
+    Notify("⬇️ Gap Down", "Moving to " .. areaName .. "...")
+    
+    if TweenToPosition(targetPos) then
+        Notify("✅ " .. areaName, "Arrived!")
+    end
+end
+
+local function TeleportToGap(gapIndex)
+    if gapIndex < 1 or gapIndex > #GapPositions then
+        Notify("❌ Error", "Invalid gap index!")
+        return
+    end
+    
+    CurrentGapIndex = gapIndex
+    local targetPos = GapPositions[gapIndex]
+    local areaName = GapNames[gapIndex]
+    
+    Notify("📍 Teleport", "Moving to " .. areaName .. "...")
+    
+    if TweenToPosition(targetPos) then
+        Notify("✅ " .. areaName, "Arrived!")
+    end
+end
+
+-- ============================================================
+-- ZOOM
+-- ============================================================
+
+local function UnlockZoom()
+    Player.CameraMaxZoomDistance = 9999
+    Player.CameraMinZoomDistance = 0
+    Notify("🔓 Zoom", "Unlocked!")
+end
+
+local function LockZoom()
+    Player.CameraMaxZoomDistance = 128
+    Player.CameraMinZoomDistance = 0.5
+    Notify("🔒 Zoom", "Reset")
+end
+
+-- ============================================================
+-- INSTANT TAKE (E Key Macro for Brainrots)
+-- ============================================================
+
+local UserInputService = game:GetService("UserInputService")
+
+local function InstantTake()
+    local connection
+    
+    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not Settings.InstantTake then
+            connection:Disconnect()
+            return
+        end
+        
+        if input.KeyCode == Enum.KeyCode.E and not gameProcessed then
+            pcall(function()
+                -- Find the closest brainrot within range
+                local closestBrainrot = nil
+                local closestDistance = math.huge
+                
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    if obj:IsA("ProximityPrompt") and obj.Parent and obj.Parent.Name:lower():find("brainrot") then
+                        local rootPart = obj.Parent:FindFirstChild("Root Part") or obj.Parent:FindFirstChildWhichIsA("BasePart")
+                        
+                        if rootPart then
+                            local distance = (HumanoidRootPart.Position - rootPart.Position).Magnitude
+                            
+                            if distance < 15 and distance < closestDistance then
+                                closestBrainrot = obj
+                                closestDistance = distance
+                            end
+                        end
+                    end
+                end
+                
+                -- If found a brainrot, trigger it
+                if closestBrainrot then
+                    fireproximityprompt(closestBrainrot)
+                end
+            end)
+        end
+    end)
+    
+    -- Store connection for cleanup
+    spawn(function()
+        while Settings.InstantTake do
+            wait(1)
+        end
+        if connection then
+            connection:Disconnect()
+        end
+    end)
+end
+
+-- ============================================================
+-- COLLECT CASH
+-- ============================================================
+
+local function CollectCash()
+    spawn(function()
+        while Settings.CollectCash do
+            wait(0.1)
+            
+            pcall(function()
+                local CollectMoney = RemoteEvents:FindFirstChild("CollectMoney")
+                if CollectMoney then
+                    for i = 1, 30 do
+                        CollectMoney:FireServer(i)
+                    end
+                end
+            end)
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTO UPGRADE SPEED +10
+-- ============================================================
+
+local function AutoUpgradeSpeed()
+    spawn(function()
+        while Settings.AutoUpgradeSpeed do
+            wait(0.4)
+            
+            pcall(function()
+                local UpgradeSpeed = RemoteFunctions:FindFirstChild("UpgradeSpeed")
+                if UpgradeSpeed then
+                    UpgradeSpeed:InvokeServer(10)
+                end
+            end)
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTO UPGRADE CARRY
+-- ============================================================
+
+local function AutoUpgradeCarry()
+    spawn(function()
+        while Settings.AutoUpgradeCarry do
+            wait(0.5)
+            
+            pcall(function()
+                local UpgradeCarry = RemoteFunctions:FindFirstChild("UpgradeCarry")
+                if UpgradeCarry then
+                    UpgradeCarry:InvokeServer()
+                end
+            end)
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTO UPGRADE BRAINROT
+-- ============================================================
+
+local function AutoUpgradeBrainrot()
+    spawn(function()
+        while Settings.AutoUpgradeBrainrot do
+            pcall(function()
+                local UpgradeBrainrot = RemoteFunctions:FindFirstChild("UpgradeBrainrot")
+                if UpgradeBrainrot then
+                    for i = 1, 30 do
+                        UpgradeBrainrot:InvokeServer(i)
+                        wait(0.05)
+                    end
+                end
+            end)
+            wait(1)
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTO REBIRTH
+-- ============================================================
+
+local function AutoRebirth()
+    spawn(function()
+        while Settings.AutoRebirth do
+            wait(5)
+            
+            pcall(function()
+                local Rebirth = RemoteFunctions:FindFirstChild("Rebirth")
+                if Rebirth then
+                    Rebirth:InvokeServer()
+                end
+            end)
+        end
+    end)
+end
+
+-- ============================================================
+-- RAYFIELD UI
+-- ============================================================
+
+local Window = Rayfield:CreateWindow({
+    Name = "🌊 FTCHUB - Escape Tsunami",
+    LoadingTitle = "FTCHUB Loading...",
+    LoadingSubtitle = "Escape Tsunami For Brainrots",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "FTCHUB_Tsunami",
+        FileName = "Config"
+    },
+    Discord = {
+        Enabled = false
+    },
+    KeySystem = false
+})
+
+-- Main Tab
+local MainTab = Window:CreateTab("🏠 Main", 4483362458)
+
+MainTab:CreateSection("Gap Navigation")
+
+MainTab:CreateButton({
+    Name = "⬆️ Gap Up (Next Gap)",
+    Callback = function()
+        GapUp()
+    end
+})
+
+MainTab:CreateButton({
+    Name = "⬇️ Gap Down (Previous Gap)",
+    Callback = function()
+        GapDown()
+    end
+})
+
+MainTab:CreateSlider({
+    Name = "⚡ Tween Speed",
+    Range = {0.5, 3},
+    Increment = 0.1,
+    CurrentValue = 1,
+    Flag = "TweenSpeed",
+    Callback = function(Value)
+        Settings.TweenSpeed = Value
+    end
+})
+
+MainTab:CreateSection("Quick Gap Teleports")
+
+MainTab:CreateDropdown({
+    Name = "📍 Select Area",
+    Options = {
+        "Gap 1 - Starting Area",
+        "Gap 2 - Uncommon Area", 
+        "Gap 3 - Rare Area",
+        "Gap 4 - Epic Area",
+        "Gap 5 - Legendary Area",
+        "Gap 6 - Mythical Area",
+        "Gap 7 - Cosmic Area",
+        "Gap 8 - Secret Area",
+        "Gap 9 - Celestial Area"
+    },
+    CurrentOption = "Gap 1 - Starting Area",
+    Flag = "GapSelect",
+    Callback = function(Option)
+        local gapNum = tonumber(Option:match("%d+"))
+        if gapNum then
+            TeleportToGap(gapNum)
+        end
+    end
+})
+
+MainTab:CreateSection("Camera")
+
+MainTab:CreateToggle({
+    Name = "🔓 Unlock Zoom Limit",
+    CurrentValue = false,
+    Flag = "ZoomUnlocked",
+    Callback = function(Value)
+        Settings.ZoomUnlocked = Value
+        if Value then
+            UnlockZoom()
+        else
+            LockZoom()
+        end
+    end
+})
+
+-- Farm Tab
+local FarmTab = Window:CreateTab("🚜 Farm", 4483362458)
+
+FarmTab:CreateSection("Auto Collection")
+
+FarmTab:CreateToggle({
+    Name = "⚡ Instant Take (Press E)",
+    CurrentValue = false,
+    Flag = "InstantTake",
+    Callback = function(Value)
+        Settings.InstantTake = Value
+        if Value then
+            Notify("⚡ Instant Take", "Press E to collect!")
+            InstantTake()
+        else
+            Notify("⚡ Instant Take", "Stopped")
+        end
+    end
+})
+
+FarmTab:CreateToggle({
+    Name = "💰 Collect Cash",
+    CurrentValue = false,
+    Flag = "CollectCash",
+    Callback = function(Value)
+        Settings.CollectCash = Value
+        if Value then
+            Notify("💰 Collect Cash", "Started!")
+            CollectCash()
+        else
+            Notify("💰 Collect Cash", "Stopped")
+        end
+    end
+})
+
+-- Upgrades Tab
+local UpgradeTab = Window:CreateTab("⬆️ Upgrades", 4483362458)
+
+UpgradeTab:CreateSection("Auto Upgrades")
+
+UpgradeTab:CreateToggle({
+    Name = "⚡ Auto Buy Speed +10",
+    CurrentValue = false,
+    Flag = "AutoUpgradeSpeed",
+    Callback = function(Value)
+        Settings.AutoUpgradeSpeed = Value
+        if Value then
+            Notify("⚡ Speed", "Auto buying!")
+            AutoUpgradeSpeed()
+        else
+            Notify("⚡ Speed", "Stopped")
+        end
+    end
+})
+
+UpgradeTab:CreateToggle({
+    Name = "🎒 Auto Upgrade Carry",
+    CurrentValue = false,
+    Flag = "AutoUpgradeCarry",
+    Callback = function(Value)
+        Settings.AutoUpgradeCarry = Value
+        if Value then
+            Notify("🎒 Carry", "Auto upgrading!")
+            AutoUpgradeCarry()
+        else
+            Notify("🎒 Carry", "Stopped")
+        end
+    end
+})
+
+UpgradeTab:CreateToggle({
+    Name = "🧠 Auto Upgrade Brainrot Slots",
+    CurrentValue = false,
+    Flag = "AutoUpgradeBrainrot",
+    Callback = function(Value)
+        Settings.AutoUpgradeBrainrot = Value
+        if Value then
+            Notify("🧠 Brainrots", "Auto upgrading!")
+            AutoUpgradeBrainrot()
+        else
+            Notify("🧠 Brainrots", "Stopped")
+        end
+    end
+})
+
+UpgradeTab:CreateSection("Rebirth")
+
+UpgradeTab:CreateToggle({
+    Name = "🔄 Auto Rebirth",
+    CurrentValue = false,
+    Flag = "AutoRebirth",
+    Callback = function(Value)
+        Settings.AutoRebirth = Value
+        if Value then
+            Notify("🔄 Rebirth", "Auto rebirthing!")
+            AutoRebirth()
+        else
+            Notify("🔄 Rebirth", "Stopped")
+        end
+    end
+})
+
+-- Info Tab
+local InfoTab = Window:CreateTab("ℹ️ Info", 4483362458)
+
+InfoTab:CreateSection("How to Use")
+
+InfoTab:CreateParagraph({Title = "Gap Navigation", Content = "• Gap Up moves to next area (forward)\n• Gap Down moves to previous area (backward)\n• Use dropdown to jump to specific areas\n• Smooth tweening through grass"})
+
+InfoTab:CreateParagraph({Title = "Instant Take", Content = "• Toggle ON to enable\n• Press E near brainrots to instantly collect\n• Works like a macro - no delay!"})
+
+InfoTab:CreateParagraph({Title = "Gap Areas", Content = "Gap 1: Starting Area\nGap 2: Uncommon Area\nGap 3: Rare Area\nGap 4: Epic Area\nGap 5: Legendary Area\nGap 6: Mythical Area\nGap 7: Cosmic Area\nGap 8: Secret Area\nGap 9: Celestial Area"})
+
+InfoTab:CreateParagraph({Title = "Working Features", Content = "✅ Area-Based Gap Navigation\n✅ E Key Instant Take\n✅ Auto Rebirth\n✅ Auto Upgrades\n✅ Collect Cash\n✅ Zoom Unlock"})
+
+InfoTab:CreateSection("Discord Support")
+
+InfoTab:CreateParagraph({Title = "FTCHUB - The Best Hub!", Content = "Need help? Have problems?\nJoin our Discord for support!\n\nhttps://discord.gg/zJZqt6K29z"})
+
+InfoTab:CreateLabel("💎 FTCHUB is the best!")
+
+InfoTab:CreateSection("Credits")
+
+InfoTab:CreateLabel("Script: FTCHUB")
+InfoTab:CreateLabel("UI: Rayfield")
+InfoTab:CreateLabel("Discord: discord.gg/zJZqt6K29z")
+
+-- ============================================================
+-- INITIALIZATION
+-- ============================================================
+
+-- Keep zoom unlocked
+spawn(function()
+    while wait(1) do
+        if Settings.ZoomUnlocked then
+            Player.CameraMaxZoomDistance = 9999
+            Player.CameraMinZoomDistance = 0
+        end
+    end
+end)
+
+-- Character respawn handler
+Player.CharacterAdded:Connect(function(char)
+    wait(1)
+    Character = char
+    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+    Humanoid = char:WaitForChild("Humanoid")
+    CurrentGapIndex = 1
+end)
